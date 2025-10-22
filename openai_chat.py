@@ -27,6 +27,7 @@ import argparse
 import requests
 import base64
 import mimetypes
+import html2text
 from termcolor import colored, cprint
 from rich.console import Console
 from rich.markdown import Markdown
@@ -34,6 +35,117 @@ from rich.rule import Rule
 import itertools
 import threading
 import time
+from abc import ABC, abstractmethod
+
+
+class Tools(ABC):
+  @abstractmethod
+  def get_spec(self):
+    ...
+
+  @abstractmethod
+  def run(self, **kwargs):
+    ...
+
+
+class ToolManager:
+  def __init__(self):
+    self.tools = {}
+    self.specs = []
+    for tool_class in Tools.__subclasses__():
+      tool_instance = tool_class()
+      tool_name = tool_instance.get_spec()["function"]["name"]
+      self.tools[tool_name] = tool_instance
+      self.specs.append(tool_instance.get_spec())
+
+    if os.environ.get("LANGSEARCH_API_KEY"):
+      tool_instance = WebSearchTool()
+      tool_name = tool_instance.get_spec()["function"]["name"]
+      self.tools[tool_name] = tool_instance
+      self.specs.append(tool_instance.get_spec())
+
+  def run_tool(self, tool_name, **kwargs):
+    if tool_name in self.tools:
+      return self.tools[tool_name].run(**kwargs)
+    else:
+      raise ValueError(f"Tool '{tool_name}' not found.")
+
+
+class WebFetchTool(Tools):
+  def get_spec(self):
+    return {
+        "type": "function",
+        "function": {
+            "name": "web_fetch",
+            "description": "Get the content of a webpage.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "The URL of the webpage to fetch.",
+                    }
+                },
+                "required": ["url"],
+            },
+        },
+    }
+
+  def run(self, url):
+    try:
+      response = requests.get(url)
+      response.raise_for_status()
+      return html2text.html2text(response.text)
+    except requests.exceptions.RequestException as e:
+      return f"Error: {e}"
+
+
+class WebSearchTool(Tools):
+  def get_spec(self):
+    return {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "Performs a web search.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query.",
+                    },
+                    "num_results": {
+                        "type": "integer",
+                        "description": "The number of search results to return.",
+                        "default": 3,
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    }
+
+  def run(self, query, num_results=3):
+    try:
+      response = requests.post(
+          "https://api.langsearch.com/v1/web-search",
+          headers={
+              "Authorization": f"Bearer {os.environ.get('LANGSEARCH_API_KEY')}",
+              "Content-Type": "application/json",
+          },
+          json={"query": query, "summary": True, "count": num_results},
+      )
+      response.raise_for_status()
+      cleaned_response = [
+          {
+              "name": pg["name"], "url": pg["url"],
+              "summary": pg["summary"] or pg["snippet"],
+          }
+          for pg in response.json()["data"]["webPages"]["value"]
+      ]
+      return json.dumps(response.json())
+    except requests.exceptions.RequestException as e:
+      return f"Error: {e}"
 
 
 def parse_image(user_input):
@@ -113,10 +225,8 @@ def animate(stop_event):
     sys.stdout.flush()
 
 
-def main(base_url, model, api_key, hide_thinking, system_prompt):
-  model_name = get_model_name(base_url, model)
-  if sys.stdin.isatty():
-    print(f"Using model: {model_name}")
+def main(base_url, model, api_key, hide_thinking, system_prompt, use_tools, cache_prompt):
+  tool_manager = ToolManager() if use_tools else None
 
   messages = []
   if system_prompt:
@@ -156,22 +266,62 @@ def main(base_url, model, api_key, hide_thinking, system_prompt):
         animation_thread.start()
 
       try:
+        json_payload = {"model": model, "messages": messages}
+        if use_tools and tool_manager.specs:
+          json_payload["tools"] = tool_manager.specs
+          json_payload["tool_choice"] = "auto"
+        if cache_prompt:
+          json_payload["cache_prompt"] = True
+
         response = requests.post(
             f"{base_url}/chat/completions",
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
-            json={"model": model_name, "messages": messages},
+            json=json_payload,
         )
         response.raise_for_status()
+
+        assistant_message = response.json()["choices"][0]["message"]
+        messages.append(assistant_message)
+
+        while use_tools and assistant_message.get("tool_calls"):
+          for tool_call in assistant_message["tool_calls"]:
+            tool_name = tool_call["function"]["name"]
+            tool_args = json.loads(tool_call["function"]["arguments"])
+            tool_result = tool_manager.run_tool(tool_name, **tool_args)
+            messages.append({
+                "tool_call_id": tool_call["id"],
+                "role": "tool",
+                "name": tool_name,
+                "content": tool_result,
+            })
+
+          json_payload = {"model": model, "messages": messages}
+          if use_tools and tool_manager.specs:
+            json_payload["tools"] = tool_manager.specs
+            json_payload["tool_choice"] = "auto"
+          if cache_prompt:
+            json_payload["cache_prompt"] = True
+
+          response = requests.post(
+              f"{base_url}/chat/completions",
+              headers={
+                  "Authorization": f"Bearer {api_key}",
+                  "Content-Type": "application/json",
+              },
+              json=json_payload,
+          )
+          response.raise_for_status()
+          assistant_message = response.json()["choices"][0]["message"]
+          messages.append(assistant_message)
+
       finally:
         if sys.stdin.isatty():
           stop_event.set()
           animation_thread.join()
 
-      assistant_message = response.json()["choices"][0]["message"]
-      messages.append(assistant_message)
       print_response(console, assistant_message, hide_thinking)
 
     except requests.exceptions.RequestException as e:
@@ -188,6 +338,12 @@ if __name__ == "__main__":
   parser.add_argument("--api-key", default=os.environ.get("OPENAI_API_KEY"))
   parser.add_argument("--system", default="", help="System prompt")
   parser.add_argument("--hide-thinking", action="store_true")
+  parser.add_argument("--no-tools", dest='use_tools', action='store_false', help="Disable tool calling")
+  parser.add_argument(
+      "--cache_prompt", dest='cache_prompt', action='store_true',
+      help="llama.cpp specific prompt caching",
+  )
+  parser.set_defaults(use_tools=True)
   args = parser.parse_args()
-  main(args.base_url, args.model, args.api_key, args.hide_thinking, args.system)
+  main(args.base_url, args.model, args.api_key, args.hide_thinking, args.system, args.use_tools, args.cache_prompt)
 

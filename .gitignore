@@ -1,0 +1,4 @@
+openai-cli-git-*
+openai-cli/
+pkg/
+src/
