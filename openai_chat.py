@@ -20,6 +20,7 @@
 #        --base-url "http://localhost:8080/v1"
 #       [--model model] [--hide-thinking] [--system system-prompt]
 
+from datetime import datetime
 import os
 import sys
 import json
@@ -66,10 +67,27 @@ class ToolManager:
 
   def run_tool(self, tool_name, **kwargs):
     if tool_name in self.tools:
+      args_text = ", ".join(f"{k}='{v}'" for k, v in kwargs.items())
+      cprint(f"{tool_name}({args_text})", "magenta")
       return self.tools[tool_name].run(**kwargs)
     else:
       raise ValueError(f"Tool '{tool_name}' not found.")
 
+
+class Time(Tools):
+  def get_spec(self):
+    return {
+        "type": "function",
+        "function": {
+            "name": "get_time",
+            "description": "Get the current local time.",
+            "parameters": {},
+        },
+    }
+
+  def run(self):
+    now = datetime.now()
+    return f"{now.isoformat()} {now.astimezone().tzinfo}"
 
 class WebFetchTool(Tools):
   def get_spec(self):
@@ -266,7 +284,7 @@ def main(base_url, model, api_key, hide_thinking, system_prompt, use_tools, cach
         animation_thread.start()
 
       try:
-        json_payload = {"model": model, "messages": messages}
+        json_payload = {"model": model, "messages": messages, "stream": False}
         if use_tools and tool_manager.specs:
           json_payload["tools"] = tool_manager.specs
           json_payload["tool_choice"] = "auto"
@@ -298,7 +316,7 @@ def main(base_url, model, api_key, hide_thinking, system_prompt, use_tools, cach
                 "content": tool_result,
             })
 
-          json_payload = {"model": model, "messages": messages}
+          json_payload = {"model": model, "messages": messages, "stream": False}
           if use_tools and tool_manager.specs:
             json_payload["tools"] = tool_manager.specs
             json_payload["tool_choice"] = "auto"
