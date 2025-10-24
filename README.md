@@ -1,17 +1,21 @@
-# OpenAI-compatible Chat CLI
+# Yet Another OpenAI-compatible CLI
 
 A simple, single-file command-line chat client compatible with the OpenAI API.
 
-*(or "I just want to quickly test my model hosted with vllm but don't want to spin up openwebui")*
+*(or "I just want to quickly test my model hosted with vllm/llama.cpp but don't
+want to spin up openwebui")*
 
 ![Chat CLI](./chat.png)
 
 ## Features
 
-- **OpenAI API Compatible:** Works with any self-hosted LLM platform that supports OpenAI chat completions API.
+- **OpenAI API Compatible:** Works with any self-hosted LLM platform that
+  supports OpenAI chat completions API.
 - **Image Support:** Send local or remote images to models that support vision.
-- **Tools:** The script has built-in tools for getting the time, fetching web pages, and performing web searches.
-- **Syntax Highlighting:** Renders Markdown in the terminal for better readability.
+- **Tools:** The script has built-in tools for getting the time, fetching web
+  pages, and performing web searches.
+- **Syntax Highlighting:** Renders Markdown in the terminal for better
+  readability.
 - **Extremely simple:** Single file, no installation needed.
 
 ## Installation
@@ -27,12 +31,13 @@ A simple, single-file command-line chat client compatible with the OpenAI API.
    pip install -r requirements.txt
    ```
 
-Or use your operating system's package manager to install python requests, termcolor, and rich
+Or use your operating system's package manager to install python requests,
+termcolor, rich, and html2text.
 
 ## Usage
 
 ```bash
-python openai_chat.py --base-url "https://api.openai.com/v1"
+python openai_chat.py --base-url "http://localhost:8090/v1"
 ```
 
 ### Flags
@@ -68,19 +73,22 @@ You can also use a URL:
 You can pipe text into stdin:
 
 ```bash
-echo "Hello, world!" | python openai_chat.py --base-url "https://api.openai.com/v1" --hide-thinking
+echo "Hello!" | python openai_chat.py --base-url "http://localhost:8090/v1" --hide-thinking
 ```
 
 ### Tools
 
-The script has the following built-in tools:
+The script has some built-in tools:
 
 - `get_time`: Get the current local time.
 - `web_fetch`: Get the content of a webpage.
-- `web_search`: Performs a web search. Requires the `LANGSEARCH_API_KEY` environment variable to be set.
+- `web_search`: Performs a web search. Requires the `LANGSEARCH_API_KEY`
+  environment variable to be set.
 
 ## Dependencies
 
 - [requests](https://pypi.org/project/requests/)
 - [termcolor](https://pypi.org/project/termcolor/)
 - [rich](https://pypi.org/project/rich/)
+- [html2text](https://pypi.org/project/html2text/)
+
