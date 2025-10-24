@@ -20,25 +20,37 @@ want to spin up openwebui")*
 
 ## Installation
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/doryiii/openai-cli.git
-   cd openai-cli
-   ```
-
-2. **Install the dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-Or use your operating system's package manager to install python requests,
-termcolor, rich, and html2text.
+- From AUR
+  ```bash
+  yay -S yaoc-git
+  ```
+- From PyPI
+  ```bash
+  pip install yaoc
+  ```
+- From Github
+  ```bash
+  git clone https://github.com/doryiii/yaoc.git
+  cd yaoc
+  pip install -r requirements.txt
+  ```
+  (Or use your operating system's package manager to install python requests,
+  termcolor, rich, and html2text.)
 
 ## Usage
 
-```bash
-python openai_chat.py --base-url "http://localhost:8090/v1"
-```
+ - If installed as system package
+   ```bash
+   openai-cli --base-url "http://localhost:8090/v1"
+   ```
+ - If installed with PyPI
+   ```bash
+   python -m yaoc.openai_cli --base-url "http://localhost:8090/v1"
+   ```
+ - If cloned from Github
+   ```bash
+   python src/yaoc/openai_cli.py --base-url "http://localhost:8090/v1"
+   ```
 
 ### Flags
 
@@ -73,7 +85,7 @@ You can also use a URL:
 You can pipe text into stdin:
 
 ```bash
-echo "Hello!" | python openai_chat.py --base-url "http://localhost:8090/v1" --hide-thinking
+echo "Hello!" | python src/openai_cli/main.py --base-url "http://localhost:8090/v1" --hide-thinking
 ```
 
 ### Tools
