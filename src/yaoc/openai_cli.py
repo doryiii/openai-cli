@@ -54,16 +54,13 @@ class ToolManager:
     self.tools = {}
     self.specs = []
     for tool_class in Tools.__subclasses__():
-      tool_instance = tool_class()
-      tool_name = tool_instance.get_spec()["function"]["name"]
-      self.tools[tool_name] = tool_instance
-      self.specs.append(tool_instance.get_spec())
-
-    if os.environ.get("LANGSEARCH_API_KEY"):
-      tool_instance = WebSearchTool()
-      tool_name = tool_instance.get_spec()["function"]["name"]
-      self.tools[tool_name] = tool_instance
-      self.specs.append(tool_instance.get_spec())
+      try:
+        tool_instance = tool_class()
+        tool_name = tool_instance.get_spec()["function"]["name"]
+        self.tools[tool_name] = tool_instance
+        self.specs.append(tool_instance.get_spec())
+      except ValueError as e:
+        print(f"Cannot initialize {tool_class.__name__}: {e}")
 
   def run_tool(self, tool_name, **kwargs):
     if tool_name in self.tools:
@@ -119,6 +116,10 @@ class WebFetchTool(Tools):
 
 
 class WebSearchTool(Tools):
+  def __init__(self):
+    if not os.environ.get('LANGSEARCH_API_KEY'):
+      raise ValueError("LANGSEARCH_API_KEY not set")
+
   def get_spec(self):
     return {
         "type": "function",
@@ -161,7 +162,7 @@ class WebSearchTool(Tools):
           }
           for pg in response.json()["data"]["webPages"]["value"]
       ]
-      return json.dumps(response.json())
+      return json.dumps(cleaned_response)
     except requests.exceptions.RequestException as e:
       return f"Error: {e}"
 
@@ -281,17 +282,24 @@ def parse_image(user_input):
   return text_prompt, image_url
 
 
-def get_model_name(base_url, model):
-  response = requests.get(f"{base_url}/models")
+def get_model_name(base_url, api_key, model):
+  response = requests.get(
+      f"{base_url}/models",
+      headers={
+          "Authorization": f"Bearer {api_key}",
+          "Content-Type": "application/json",
+      },
+  )
   response.raise_for_status()
   models = response.json()
 
   if not model:
+    print(f"Available models: {', '.join(m['id'] for m in models['data'])}\n")
     return models["data"][0]["id"]
 
-  for model in models["data"]:
-    if model["id"] == model:
-      return model["id"]
+  for srv_model in models["data"]:
+    if srv_model["id"] == model:
+      return srv_model["id"]
 
   raise ValueError(f"Error: Model '{model}' not found.")
 
@@ -333,7 +341,7 @@ def animate(stop_event):
 
 
 def main(base_url, model, api_key, hide_thinking, system_prompt, use_tools, cache_prompt):
-  model_name = get_model_name(base_url, model)
+  model_name = get_model_name(base_url, api_key, model)
   if sys.stdin.isatty():
     print(f"Using model: {model_name}")
 
