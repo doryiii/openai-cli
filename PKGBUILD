@@ -1,13 +1,13 @@
 # Maintainer: Dory <dory@dory.moe>
 pkgname=openai-cli-git
 _pkgname=openai-cli
-pkgver=r3.cee1267
+pkgver=r5.e99f3d4
 pkgrel=1
-pkgdesc="A CLI for OpenAI's chat API."
+pkgdesc="A simple and feature-rich CLI for OpenAI's chat API, with support for tools and image inputs."
 arch=('any')
 url="https://github.com/doryiii/openai-cli"
 license=('MIT')
-depends=('python')
+depends=('python' 'python-requests' 'python-termcolor' 'python-rich' 'python-html2text')
 makedepends=('git')
 source=("git+https://github.com/doryiii/openai-cli.git")
 sha256sums=('SKIP')

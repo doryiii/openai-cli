@@ -10,6 +10,7 @@ A simple, single-file command-line chat client compatible with the OpenAI API.
 
 - **OpenAI API Compatible:** Works with any self-hosted LLM platform that supports OpenAI chat completions API.
 - **Image Support:** Send local or remote images to models that support vision.
+- **Tools:** The script has built-in tools for getting the time, fetching web pages, and performing web searches.
 - **Syntax Highlighting:** Renders Markdown in the terminal for better readability.
 - **Extremely simple:** Single file, no installation needed.
 
@@ -43,6 +44,8 @@ python openai_chat.py --base-url "https://api.openai.com/v1"
 | `--api-key`       | The API key for the service. Defaults to the `OPENAI_API_KEY` environment variable. |
 | `--system`        | Optional system prompt to give to the model                                         |
 | `--hide-thinking` | Hide the thinking process output of the model.                                      |
+| `--no-tools`      | Disable tool calling                                                                |
+| `--cache_prompt`  | llama.cpp specific prompt caching                                                   |
 
 ### Images
 
@@ -67,6 +70,14 @@ You can pipe text into stdin:
 ```bash
 echo "Hello, world!" | python openai_chat.py --base-url "https://api.openai.com/v1" --hide-thinking
 ```
+
+### Tools
+
+The script has the following built-in tools:
+
+- `get_time`: Get the current local time.
+- `web_fetch`: Get the content of a webpage.
+- `web_search`: Performs a web search. Requires the `LANGSEARCH_API_KEY` environment variable to be set.
 
 ## Dependencies
 
