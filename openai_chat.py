@@ -244,6 +244,10 @@ def animate(stop_event):
 
 
 def main(base_url, model, api_key, hide_thinking, system_prompt, use_tools, cache_prompt):
+  model_name = get_model_name(base_url, model)
+  if sys.stdin.isatty():
+    print(f"Using model: {model_name}")
+
   tool_manager = ToolManager() if use_tools else None
 
   messages = []
