@@ -166,6 +166,95 @@ class WebSearchTool(Tools):
       return f"Error: {e}"
 
 
+class ListDir(Tools):
+  def get_spec(self):
+    return {
+        "type": "function",
+        "function": {
+            "name": "list_dir",
+            "description": "Lists the contents of a directory.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "The path to the directory.",
+                    }
+                },
+                "required": ["path"],
+            },
+        },
+    }
+
+  def run(self, path):
+    try:
+      return "\n".join(os.listdir(path))
+    except Exception as e:
+      return f"Error: {e}"
+
+
+class ReadFile(Tools):
+  def get_spec(self):
+    return {
+        "type": "function",
+        "function": {
+            "name": "read_file",
+            "description": "Reads the contents of a file.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "The path to the file.",
+                    }
+                },
+                "required": ["path"],
+            },
+        },
+    }
+
+  def run(self, path):
+    try:
+      with open(path, "r") as f:
+        return f.read()
+    except Exception as e:
+      return f"Error: {e}"
+
+
+class WriteFile(Tools):
+  def get_spec(self):
+    return {
+        "type": "function",
+        "function": {
+            "name": "write_file",
+            "description": "Writes content to a file.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "The path to the file.",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "The content to write.",
+                    },
+                },
+                "required": ["path", "content"],
+            },
+        },
+    }
+
+  def run(self, path, content):
+    try:
+      with open(path, "w") as f:
+        f.write(content)
+      return f"Successfully wrote to {path}"
+    except Exception as e:
+      return f"Error: {e}"
+
+
+
 def parse_image(user_input):
   parts = user_input.split("@image:")
   if len(parts) > 2 or not user_input.endswith(parts[1]):
