@@ -61,9 +61,10 @@ want to spin up openwebui")*
 | `--api-key`       | The API key for the service. Defaults to the `OPENAI_API_KEY` environment variable. |
 | `--system`        | Optional system prompt to give to the model                                         |
 | `--hide-thinking` | Hide the thinking process output of the model.                                      |
-| `--cache_prompt`  | llama.cpp specific prompt caching                                                   |
-| `--tools_web_access`  | Enable web search and fetch tools                                                   |
-| `--tools_file_access` | Enable file system tools                                                            |
+| `--cache-prompt`  | llama.cpp specific prompt caching                                                   |
+| `--tools-basic`   | Enable basic tools (e.g. get_time)                                                  |
+| `--tools-web-access`  | Enable web search and fetch tools                                                   |
+| `--tools-file-access` | Enable file system tools                                                            |
 
 ### Images
 

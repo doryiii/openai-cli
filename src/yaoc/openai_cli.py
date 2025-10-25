@@ -421,7 +421,7 @@ def main(args):
       for k, v in vars(args).items()
       if k.startswith("tools_")
   })
-  if sys.stdin.isatty():
+  if sys.stdin.isatty() and tool_manager.tools:
     print(f"Tools: {', '.join(tool_manager.tools)}")
 
   messages = []
@@ -467,7 +467,7 @@ def main(args):
         )
         messages.append(assistant_message)
 
-        while tool_manager.specs and assistant_message.get("tool_calls"):
+        while tool_manager.tools and assistant_message.get("tool_calls"):
           for tool_call in assistant_message["tool_calls"]:
             tool_name = tool_call["function"]["name"]
             tool_args = json.loads(tool_call["function"]["arguments"])
@@ -506,8 +506,8 @@ if __name__ == "__main__":
   parser.add_argument("--api-key", default=os.environ.get("OPENAI_API_KEY"))
   parser.add_argument("--system", default="", help="System prompt")
   parser.add_argument("--hide-thinking", action="store_true")
-  parser.add_argument("--cache_prompt", action="store_true", help="llama.cpp")
-  parser.add_argument("--tools_web_access", action="store_true")
-  parser.add_argument("--tools_file_access", action="store_true")
-  parser.set_defaults(tools_basic=True)
+  parser.add_argument("--cache-prompt", action="store_true", help="llama.cpp")
+  parser.add_argument("--tools-basic", action=argparse.BooleanOptionalAction)
+  parser.add_argument("--tools-web-access", action=argparse.BooleanOptionalAction)
+  parser.add_argument("--tools-file-access", action=argparse.BooleanOptionalAction)
   main(parser.parse_args())
