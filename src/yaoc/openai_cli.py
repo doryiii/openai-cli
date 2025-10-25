@@ -21,10 +21,13 @@
 #       [--model model] [--hide-thinking] [--system system-prompt]
 
 from datetime import datetime
+import functools
+import enum
 import os
 import sys
 import json
 import argparse
+import readline
 import requests
 import base64
 import mimetypes
@@ -39,9 +42,21 @@ import time
 from abc import ABC, abstractmethod
 
 
+class ToolType(enum.Enum):
+  BASIC = "basic"
+  FILE_ACCESS = "file_access"
+  WEB_ACCESS = "web_access"
+
+
 class Tools(ABC):
+  @property
   @abstractmethod
-  def get_spec(self):
+  def spec(self):
+    ...
+
+  @property
+  @abstractmethod
+  def tool_type(self):
     ...
 
   @abstractmethod
@@ -50,15 +65,18 @@ class Tools(ABC):
 
 
 class ToolManager:
-  def __init__(self):
+  def __init__(self, tool_types):
+    enabled_tool_types = {ToolType(t) for t in tool_types if tool_types[t]}
     self.tools = {}
     self.specs = []
     for tool_class in Tools.__subclasses__():
       try:
         tool_instance = tool_class()
-        tool_name = tool_instance.get_spec()["function"]["name"]
+        if tool_instance.tool_type not in enabled_tool_types:
+          continue
+        tool_name = tool_instance.spec["function"]["name"]
         self.tools[tool_name] = tool_instance
-        self.specs.append(tool_instance.get_spec())
+        self.specs.append(tool_instance.spec)
       except ValueError as e:
         print(f"Cannot initialize {tool_class.__name__}: {e}")
 
@@ -72,7 +90,8 @@ class ToolManager:
 
 
 class Time(Tools):
-  def get_spec(self):
+  @functools.cached_property
+  def spec(self):
     return {
         "type": "function",
         "function": {
@@ -82,12 +101,17 @@ class Time(Tools):
         },
     }
 
+  @functools.cached_property
+  def tool_type(self):
+    return ToolType.BASIC
+
   def run(self):
     now = datetime.now()
-    return f"{now.isoformat()} {now.astimezone().tzinfo}"
+    return f"{now.strftime("%A")} {now.isoformat()} {now.astimezone().tzinfo}"
 
 class WebFetchTool(Tools):
-  def get_spec(self):
+  @functools.cached_property
+  def spec(self):
     return {
         "type": "function",
         "function": {
@@ -106,6 +130,10 @@ class WebFetchTool(Tools):
         },
     }
 
+  @functools.cached_property
+  def tool_type(self):
+    return ToolType.WEB_ACCESS
+
   def run(self, url):
     try:
       response = requests.get(url)
@@ -120,7 +148,8 @@ class WebSearchTool(Tools):
     if not os.environ.get('LANGSEARCH_API_KEY'):
       raise ValueError("LANGSEARCH_API_KEY not set")
 
-  def get_spec(self):
+  @functools.cached_property
+  def spec(self):
     return {
         "type": "function",
         "function": {
@@ -143,6 +172,10 @@ class WebSearchTool(Tools):
             },
         },
     }
+
+  @functools.cached_property
+  def tool_type(self):
+    return ToolType.WEB_ACCESS
 
   def run(self, query, num_results=3):
     try:
@@ -168,7 +201,8 @@ class WebSearchTool(Tools):
 
 
 class ListDir(Tools):
-  def get_spec(self):
+  @functools.cached_property
+  def spec(self):
     return {
         "type": "function",
         "function": {
@@ -187,6 +221,10 @@ class ListDir(Tools):
         },
     }
 
+  @functools.cached_property
+  def tool_type(self):
+    return ToolType.FILE_ACCESS
+
   def run(self, path):
     try:
       return "\n".join(os.listdir(path))
@@ -195,7 +233,8 @@ class ListDir(Tools):
 
 
 class ReadFile(Tools):
-  def get_spec(self):
+  @functools.cached_property
+  def spec(self):
     return {
         "type": "function",
         "function": {
@@ -214,6 +253,10 @@ class ReadFile(Tools):
         },
     }
 
+  @functools.cached_property
+  def tool_type(self):
+    return ToolType.FILE_ACCESS
+
   def run(self, path):
     try:
       with open(path, "r") as f:
@@ -223,7 +266,8 @@ class ReadFile(Tools):
 
 
 class WriteFile(Tools):
-  def get_spec(self):
+  @functools.cached_property
+  def spec(self):
     return {
         "type": "function",
         "function": {
@@ -246,6 +290,10 @@ class WriteFile(Tools):
         },
     }
 
+  @functools.cached_property
+  def tool_type(self):
+    return ToolType.FILE_ACCESS
+
   def run(self, path, content):
     try:
       with open(path, "w") as f:
@@ -255,7 +303,6 @@ class WriteFile(Tools):
       return f"Error: {e}"
 
 
-
 def parse_image(user_input):
   parts = user_input.split("@image:")
   if len(parts) > 2 or not user_input.endswith(parts[1]):
@@ -263,22 +310,23 @@ def parse_image(user_input):
 
   text_prompt = parts[0].strip()
   image_path = parts[1].strip()
+  mime_type, _ = mimetypes.guess_type(image_path)
+  if not mime_type or not mime_type.startswith('image/'):
+    raise ValueError(f"Error: Unsupported image type '{mime_type}'")
 
   if image_path.startswith(("http://", "https://")):
-    image_url = image_path
+    response = requests.get(image_path)
+    response.raise_for_status()
+    image_blob = response.content
 
   else:
     if not os.path.exists(image_path):
       raise ValueError(f"Error: Image file not found at '{image_path}'")
-
-    mime_type, _ = mimetypes.guess_type(image_path)
-    if not mime_type or not mime_type.startswith('image/'):
-      raise ValueError(f"Error: Unsupported image type '{mime_type}'")
-
     with open(image_path, "rb") as image_file:
-      encoded_image = base64.b64encode(image_file.read()).decode('utf-8')
-    image_url = f"data:{mime_type};base64,{encoded_image}"
+      image_blob = image_file.read()
 
+  encoded_image = base64.b64encode(image_blob).decode("utf-8")
+  image_url = f"data:{mime_type};base64,{encoded_image}"
   return text_prompt, image_url
 
 
@@ -294,7 +342,6 @@ def get_model_name(base_url, api_key, model):
   models = response.json()
 
   if not model:
-    print(f"Available models: {', '.join(m['id'] for m in models['data'])}\n")
     return models["data"][0]["id"]
 
   for srv_model in models["data"]:
@@ -326,7 +373,9 @@ def print_response(console, response, hide_thinking):
 
   if not hide_thinking and thinking_text:
     cprint(thinking_text + "\n", "magenta")
-  console.print(Markdown(answer_text))
+  console.print(Markdown(answer_text, hyperlinks=False))
+  if sys.stdin.isatty():
+    print()
 
 
 def animate(stop_event):
@@ -340,22 +389,49 @@ def animate(stop_event):
     sys.stdout.flush()
 
 
-def main(base_url, model, api_key, hide_thinking, system_prompt, use_tools, cache_prompt):
-  model_name = get_model_name(base_url, api_key, model)
-  if sys.stdin.isatty():
-    print(f"Using model: {model_name}")
+def call_llm(base_url, api_key, model, messages, cache_prompt, tool_manager):
+  json_payload = {
+      "model": model, "messages": messages, "stream": False,
+  }
+  if cache_prompt:
+    json_payload["cache_prompt"] = True
+  if tool_manager.specs:
+    json_payload["tools"] = tool_manager.specs
+    json_payload["tool_choice"] = "auto"
 
-  tool_manager = ToolManager() if use_tools else None
+  response = requests.post(
+      f"{base_url}/chat/completions",
+      headers={
+          "Authorization": f"Bearer {api_key}",
+          "Content-Type": "application/json",
+      },
+      json=json_payload,
+  )
+  response.raise_for_status()
+  return response.json()["choices"][0]["message"]
+
+
+def main(args):
+  model_name = get_model_name(args.base_url, args.api_key, args.model)
+  if not args.model:
+    print(f"Using model: {model_name}", file=sys.stderr)
+
+  tool_manager = ToolManager({
+      k.removeprefix("tools_"): v
+      for k, v in vars(args).items()
+      if k.startswith("tools_")
+  })
+  if sys.stdin.isatty():
+    print(f"Tools: {', '.join(tool_manager.tools)}")
 
   messages = []
-  if system_prompt:
-    messages.append({"role": "system", "content": system_prompt})
+  if args.system:
+    messages.append({"role": "system", "content": args.system})
   console = Console()
 
   while True:
     try:
       if sys.stdin.isatty():
-        print()
         console.print(Rule())
         user_input = input(colored("> ", "green", attrs=["bold"]))
         print()
@@ -385,27 +461,13 @@ def main(base_url, model, api_key, hide_thinking, system_prompt, use_tools, cach
         animation_thread.start()
 
       try:
-        json_payload = {"model": model, "messages": messages, "stream": False}
-        if use_tools and tool_manager.specs:
-          json_payload["tools"] = tool_manager.specs
-          json_payload["tool_choice"] = "auto"
-        if cache_prompt:
-          json_payload["cache_prompt"] = True
-
-        response = requests.post(
-            f"{base_url}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json=json_payload,
+        assistant_message = call_llm(
+            args.base_url, args.api_key, args.model, messages,
+            args.cache_prompt, tool_manager,
         )
-        response.raise_for_status()
-
-        assistant_message = response.json()["choices"][0]["message"]
         messages.append(assistant_message)
 
-        while use_tools and assistant_message.get("tool_calls"):
+        while tool_manager.specs and assistant_message.get("tool_calls"):
           for tool_call in assistant_message["tool_calls"]:
             tool_name = tool_call["function"]["name"]
             tool_args = json.loads(tool_call["function"]["arguments"])
@@ -417,23 +479,10 @@ def main(base_url, model, api_key, hide_thinking, system_prompt, use_tools, cach
                 "content": tool_result,
             })
 
-          json_payload = {"model": model, "messages": messages, "stream": False}
-          if use_tools and tool_manager.specs:
-            json_payload["tools"] = tool_manager.specs
-            json_payload["tool_choice"] = "auto"
-          if cache_prompt:
-            json_payload["cache_prompt"] = True
-
-          response = requests.post(
-              f"{base_url}/chat/completions",
-              headers={
-                  "Authorization": f"Bearer {api_key}",
-                  "Content-Type": "application/json",
-              },
-              json=json_payload,
+          assistant_message = call_llm(
+              args.base_url, args.api_key, args.model, messages,
+              args.cache_prompt, tool_manager,
           )
-          response.raise_for_status()
-          assistant_message = response.json()["choices"][0]["message"]
           messages.append(assistant_message)
 
       finally:
@@ -441,10 +490,10 @@ def main(base_url, model, api_key, hide_thinking, system_prompt, use_tools, cach
           stop_event.set()
           animation_thread.join()
 
-      print_response(console, assistant_message, hide_thinking)
+      print_response(console, assistant_message, args.hide_thinking)
 
     except requests.exceptions.RequestException as e:
-      print(f"Error: {e}")
+      print(f"Error: {e}", file=sys.stderr)
       break
     except (KeyboardInterrupt, EOFError):
       break
@@ -457,12 +506,8 @@ if __name__ == "__main__":
   parser.add_argument("--api-key", default=os.environ.get("OPENAI_API_KEY"))
   parser.add_argument("--system", default="", help="System prompt")
   parser.add_argument("--hide-thinking", action="store_true")
-  parser.add_argument("--no-tools", dest='use_tools', action='store_false', help="Disable tool calling")
-  parser.add_argument(
-      "--cache_prompt", dest='cache_prompt', action='store_true',
-      help="llama.cpp specific prompt caching",
-  )
-  parser.set_defaults(use_tools=True)
-  args = parser.parse_args()
-  main(args.base_url, args.model, args.api_key, args.hide_thinking, args.system, args.use_tools, args.cache_prompt)
-
+  parser.add_argument("--cache_prompt", action="store_true", help="llama.cpp")
+  parser.add_argument("--tools_web_access", action="store_true")
+  parser.add_argument("--tools_file_access", action="store_true")
+  parser.set_defaults(tools_basic=True)
+  main(parser.parse_args())

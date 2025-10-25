@@ -13,7 +13,7 @@ want to spin up openwebui")*
   supports OpenAI chat completions API.
 - **Image Support:** Send local or remote images to models that support vision.
 - **Tools:** The script has built-in tools for getting the time, fetching web
-  pages, and performing web searches.
+  pages, performing web searches, and file reading/writing.
 - **Syntax Highlighting:** Renders Markdown in the terminal for better
   readability.
 - **Extremely simple:** Single file, no installation needed.
@@ -61,8 +61,9 @@ want to spin up openwebui")*
 | `--api-key`       | The API key for the service. Defaults to the `OPENAI_API_KEY` environment variable. |
 | `--system`        | Optional system prompt to give to the model                                         |
 | `--hide-thinking` | Hide the thinking process output of the model.                                      |
-| `--no-tools`      | Disable tool calling                                                                |
 | `--cache_prompt`  | llama.cpp specific prompt caching                                                   |
+| `--tools_web_access`  | Enable web search and fetch tools                                                   |
+| `--tools_file_access` | Enable file system tools                                                            |
 
 ### Images
 
@@ -96,6 +97,9 @@ The script has some built-in tools:
 - `web_fetch`: Get the content of a webpage.
 - `web_search`: Performs a web search. Requires the `LANGSEARCH_API_KEY`
   environment variable to be set.
+- `list_dir`: Lists the contents of a directory.
+- `read_file`: Reads the contents of a file.
+- `write_file`: Writes content to a file.
 
 ## Dependencies
 
