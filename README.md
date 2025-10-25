@@ -1,6 +1,7 @@
 # Yet Another OpenAI-compatible CLI
 
-A simple, single-file command-line chat client compatible with the OpenAI API.
+A simple yet feature-rich command-line chat client compatible with the OpenAI
+API.
 
 *(or "I just want to quickly test my model hosted with vllm/llama.cpp but don't
 want to spin up openwebui")*
