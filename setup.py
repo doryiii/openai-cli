@@ -5,7 +5,7 @@ with open('README.md', 'r', encoding='utf-8') as f:
 
 setup(
     name='yaoc',
-    version='0.1.6',
+    version='0.1.7',
     author='Dory',
     author_email='dory@dory.moe',
     description='Yet Another OpenAI-compatible CLI',

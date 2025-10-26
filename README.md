@@ -50,7 +50,7 @@ want to spin up openwebui")*
    ```
  - If cloned from Github
    ```bash
-   python src/yaoc/openai_cli.py --base-url "http://localhost:8090/v1"
+   python -m src.yaoc.openai_cli --base-url "http://localhost:8090/v1"
    ```
 
 ### Flags

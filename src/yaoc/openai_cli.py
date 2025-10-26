@@ -38,6 +38,18 @@ import time
 from .tools import ToolManager
 
 
+parser = argparse.ArgumentParser(description="OpenAI-compatible chat CLI")
+parser.add_argument("--base-url", required=True, help="API base URL")
+parser.add_argument("--model", default="", help="Model name")
+parser.add_argument("--api-key", default=os.environ.get("OPENAI_API_KEY"))
+parser.add_argument("--system", default="", help="System prompt")
+parser.add_argument("--hide-thinking", action="store_true")
+parser.add_argument("--cache-prompt", action="store_true", help="llama.cpp")
+parser.add_argument("--tools-basic", action=argparse.BooleanOptionalAction)
+parser.add_argument("--tools-web-access", action=argparse.BooleanOptionalAction)
+parser.add_argument("--tools-file-access", action=argparse.BooleanOptionalAction)
+
+
 def parse_image(user_input):
   parts = user_input.split("@image:")
   if len(parts) > 2 or not user_input.endswith(parts[1]):
@@ -146,7 +158,8 @@ def call_llm(base_url, api_key, model, messages, cache_prompt, tool_manager):
   return response.json()["choices"][0]["message"]
 
 
-def main(args):
+def main():
+  args = parser.parse_args()
   model_name = get_model_name(args.base_url, args.api_key, args.model)
   if not args.model:
     print(f"Using model: {model_name}", file=sys.stderr)
@@ -235,14 +248,4 @@ def main(args):
 
 
 if __name__ == "__main__":
-  parser = argparse.ArgumentParser(description="OpenAI-compatible chat CLI")
-  parser.add_argument("--base-url", required=True, help="API base URL")
-  parser.add_argument("--model", default="", help="Model name")
-  parser.add_argument("--api-key", default=os.environ.get("OPENAI_API_KEY"))
-  parser.add_argument("--system", default="", help="System prompt")
-  parser.add_argument("--hide-thinking", action="store_true")
-  parser.add_argument("--cache-prompt", action="store_true", help="llama.cpp")
-  parser.add_argument("--tools-basic", action=argparse.BooleanOptionalAction)
-  parser.add_argument("--tools-web-access", action=argparse.BooleanOptionalAction)
-  parser.add_argument("--tools-file-access", action=argparse.BooleanOptionalAction)
-  main(parser.parse_args())
+  main()
