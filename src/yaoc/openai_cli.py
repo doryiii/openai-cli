@@ -166,8 +166,10 @@ def main():
       for k, v in vars(args).items()
       if k.startswith("tools_")
   })
-  if sys.stdin.isatty() and tool_manager.tools:
-    print(f"Tools: {', '.join(tool_manager.tools)}")
+  if sys.stdin.isatty() and tool_manager.specs:
+    print(
+        f"Tools: {', '.join(t["function"]["name"] for t in tool_manager.specs)}"
+    )
 
   messages = []
   if args.system:
@@ -212,11 +214,11 @@ def main():
         )
         messages.append(assistant_message)
 
-        while tool_manager.tools and assistant_message.get("tool_calls"):
+        while tool_manager.specs and assistant_message.get("tool_calls"):
           for tool_call in assistant_message["tool_calls"]:
             tool_name = tool_call["function"]["name"]
             tool_args = json.loads(tool_call["function"]["arguments"])
-            tool_result = tool_manager.run_tool(tool_name, **tool_args)
+            tool_result = tool_manager.call(tool_name, **tool_args)
             messages.append({
                 "tool_call_id": tool_call["id"],
                 "role": "tool",

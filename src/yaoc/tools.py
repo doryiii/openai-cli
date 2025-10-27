@@ -15,273 +15,129 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import enum
-import functools
+import collections
+import inspect
 import os
 import json
 import requests
 import html2text
-from abc import ABC, abstractmethod
 from datetime import datetime
+from pydantic import Field
 from termcolor import cprint
+from typing import Annotated
 
 
-class ToolType(enum.Enum):
-  BASIC = "basic"
-  FILE_ACCESS = "file_access"
-  WEB_ACCESS = "web_access"
-
-
-class Tools(ABC):
-  @property
-  @abstractmethod
-  def spec(self):
-    ...
-
-  @property
-  @abstractmethod
-  def tool_type(self):
-    ...
-
-  @abstractmethod
-  def run(self, **kwargs):
-    ...
-
-
-class ToolManager:
-  def __init__(self, tool_types):
-    enabled_tool_types = {ToolType(t) for t in tool_types if tool_types[t]}
-    self.tools = {}
-    self.specs = []
-    for tool_class in Tools.__subclasses__():
-      try:
-        tool_instance = tool_class()
-        if tool_instance.tool_type not in enabled_tool_types:
-          continue
-        tool_name = tool_instance.spec["function"]["name"]
-        self.tools[tool_name] = tool_instance
-        self.specs.append(tool_instance.spec)
-      except ValueError as e:
-        print(f"Cannot initialize {tool_class.__name__}: {e}")
-
-  def run_tool(self, tool_name, **kwargs):
-    if tool_name in self.tools:
-      args_text = ", ".join(f"{k}='{v}'" for k, v in kwargs.items())
-      cprint(f"{tool_name}({args_text})", "magenta")
-      return self.tools[tool_name].run(**kwargs)
-    else:
-      raise ValueError(f"Tool '{tool_name}' not found.")
-
-
-class Time(Tools):
-  @functools.cached_property
-  def spec(self):
-    return {
-        "type": "function",
-        "function": {
-            "name": "get_time",
-            "description": "Get the current local time.",
-            "parameters": {},
-        },
-    }
-
-  @functools.cached_property
-  def tool_type(self):
-    return ToolType.BASIC
-
-  def run(self):
+class Basic:
+  def get_time():
+    """Get the current local date, time, and timezone."""
     now = datetime.now()
     return f"{now.strftime("%A")} {now.isoformat()} {now.astimezone().tzinfo}"
 
-class WebFetchTool(Tools):
-  @functools.cached_property
-  def spec(self):
-    return {
+
+class WebAccess:
+  def web_fetch(
+      url: Annotated[str, Field(description="the webpage URL to fetch")],
+  ):
+    """Get content of a webpage."""
+    if not url.startswith(("http://", "https://")):
+      url = "https://" + url
+    webres = requests.get(url)
+    webres.raise_for_status()
+    return html2text.html2text(webres.text)
+
+  def web_search(
+      query: Annotated[str, Field(description="the web search query")],
+      num_results: Annotated[int, Field(description="how many pages to get. Default 5")] = 5,
+  ):
+    """Search the web."""
+    res = requests.post(
+        "https://api.langsearch.com/v1/web-search",
+        json={"query": str(query), "summary": True, "count": int(num_results)},
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {os.environ.get("LANGSEARCH_API_KEY")}",
+        },
+    ).json()
+    cleaned_res = [
+        {
+            "name": pg["name"],
+            "url": pg["url"],
+            "summary": pg["summary"] or pg["snippet"],
+        }
+        for pg in res["data"]["webPages"]["value"]
+    ]
+    return json.dumps(cleaned_res)
+
+
+class FileAccess:
+  def list_dir(
+      path: Annotated[str, Field(description="the directory to list")],
+  ):
+    """List content of a directory."""
+    return "\n".join(os.listdir(path))
+
+  def read_file(path: Annotated[str, Field(description="the file to read")]):
+    """Read content of a file."""
+    with open(path) as f:
+      return f.read()
+
+  def write_file(
+      path: Annotated[str, Field(description="the file to write to")],
+      content: Annotated[str, Field(description="the content to write")],
+  ):
+    """Write content to a file."""
+    with open(path, "w") as f:
+      f.write(content)
+    return "Done"
+
+
+TOOL_TYPE = {"basic": Basic, "web_access": WebAccess, "file_access": FileAccess}
+
+
+class ToolManager:
+  TYPES = collections.defaultdict(lambda: "string", {int: "integer"})
+
+  def __init__(self, tool_types):
+    enabled_tool_classes = [TOOL_TYPE[t] for t in tool_types if tool_types[t]]
+    self._tools = {}
+    self.specs = []
+    for tool_class in enabled_tool_classes:
+      for tool_name, tool_func in tool_class.__dict__.items():
+        if not tool_name.startswith("_") and callable(tool_func):
+          self._tools[tool_name] = tool_func
+          self.specs.append(self._get_spec(tool_func))
+
+  def _get_spec(self, f):
+    spec = {
         "type": "function",
         "function": {
-            "name": "web_fetch",
-            "description": "Get the content of a webpage.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "url": {
-                        "type": "string",
-                        "description": "The URL of the webpage to fetch.",
-                    }
-                },
-                "required": ["url"],
-            },
+            "name": f.__name__,
+            "description": inspect.getdoc(f),
+            "parameters": {"type": "object", "properties": {}, "required": []},
         },
     }
+    for name, p in inspect.signature(f).parameters.items():
+      if p.annotation is not inspect.Parameter.empty:
+        # The type hint is in the first arg of Annotated
+        param_type = self.TYPES[p.annotation.__args__[0]]
+        # The description is in the `description` field of the second arg
+        param_desc = p.annotation.__metadata__[0].description
+        spec["function"]["parameters"]["properties"][name] = {
+            "type": param_type,
+            "description": param_desc,
+        }
+        if p.default is inspect.Parameter.empty:
+          spec["function"]["parameters"]["required"].append(name)
 
-  @functools.cached_property
-  def tool_type(self):
-    return ToolType.WEB_ACCESS
+    if not spec["function"]["parameters"]["properties"]:
+      spec["function"]["parameters"] = {}
 
-  def run(self, url):
-    try:
-      response = requests.get(url)
-      response.raise_for_status()
-      return html2text.html2text(response.text)
-    except requests.exceptions.RequestException as e:
-      return f"Error: {e}"
+    return spec
 
+  def call(self, tool_name, **kwargs):
+    if tool_name not in self._tools:
+      raise ValueError(f"Tool '{tool_name}' not found.")
+    args_text = ", ".join(f"{k}='{v}'" for k, v in kwargs.items())
+    cprint(f"{tool_name}({args_text})", "magenta")
+    return self._tools[tool_name](**kwargs)
 
-class WebSearchTool(Tools):
-  def __init__(self):
-    if not os.environ.get('LANGSEARCH_API_KEY'):
-      raise ValueError("LANGSEARCH_API_KEY not set")
-
-  @functools.cached_property
-  def spec(self):
-    return {
-        "type": "function",
-        "function": {
-            "name": "web_search",
-            "description": "Performs a web search.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "The search query.",
-                    },
-                    "num_results": {
-                        "type": "integer",
-                        "description": "The number of search results to return.",
-                        "default": 3,
-                    },
-                },
-                "required": ["query"],
-            },
-        },
-    }
-
-  @functools.cached_property
-  def tool_type(self):
-    return ToolType.WEB_ACCESS
-
-  def run(self, query, num_results=3):
-    try:
-      response = requests.post(
-          "https://api.langsearch.com/v1/web-search",
-          headers={
-              "Authorization": f"Bearer {os.environ.get('LANGSEARCH_API_KEY')}",
-              "Content-Type": "application/json",
-          },
-          json={"query": query, "summary": True, "count": num_results},
-      )
-      response.raise_for_status()
-      cleaned_response = [
-          {
-              "name": pg["name"], "url": pg["url"],
-              "summary": pg["summary"] or pg["snippet"],
-          }
-          for pg in response.json()["data"]["webPages"]["value"]
-      ]
-      return json.dumps(cleaned_response)
-    except requests.exceptions.RequestException as e:
-      return f"Error: {e}"
-
-
-class ListDir(Tools):
-  @functools.cached_property
-  def spec(self):
-    return {
-        "type": "function",
-        "function": {
-            "name": "list_dir",
-            "description": "Lists the contents of a directory.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "The path to the directory.",
-                    }
-                },
-                "required": ["path"],
-            },
-        },
-    }
-
-  @functools.cached_property
-  def tool_type(self):
-    return ToolType.FILE_ACCESS
-
-  def run(self, path):
-    try:
-      return "\n".join(os.listdir(path))
-    except Exception as e:
-      return f"Error: {e}"
-
-
-class ReadFile(Tools):
-  @functools.cached_property
-  def spec(self):
-    return {
-        "type": "function",
-        "function": {
-            "name": "read_file",
-            "description": "Reads the contents of a file.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "The path to the file.",
-                    }
-                },
-                "required": ["path"],
-            },
-        },
-    }
-
-  @functools.cached_property
-  def tool_type(self):
-    return ToolType.FILE_ACCESS
-
-  def run(self, path):
-    try:
-      with open(path, "r") as f:
-        return f.read()
-    except Exception as e:
-      return f"Error: {e}"
-
-
-class WriteFile(Tools):
-  @functools.cached_property
-  def spec(self):
-    return {
-        "type": "function",
-        "function": {
-            "name": "write_file",
-            "description": "Writes content to a file.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "The path to the file.",
-                    },
-                    "content": {
-                        "type": "string",
-                        "description": "The content to write.",
-                    },
-                },
-                "required": ["path", "content"],
-            },
-        },
-    }
-
-  @functools.cached_property
-  def tool_type(self):
-    return ToolType.FILE_ACCESS
-
-  def run(self, path, content):
-    try:
-      with open(path, "w") as f:
-        f.write(content)
-      return f"Successfully wrote to {path}"
-    except Exception as e:
-      return f"Error: {e}"

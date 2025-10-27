@@ -2,3 +2,4 @@ requests
 termcolor
 rich
 html2text
+pydantic
