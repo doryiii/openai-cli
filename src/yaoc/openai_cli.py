@@ -15,11 +15,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-# Usage:
-#   python openai_chat.py \
-#        --base-url "http://localhost:8080/v1"
-#       [--model model] [--hide-thinking] [--system system-prompt]
-
 import os
 import sys
 import json
@@ -109,6 +104,8 @@ def print_response(console, response, hide_thinking):
       answer_marker = "<answer>"
     elif "<|end|>" in content:
       answer_marker = "<|end|>"
+    elif "</think>" in content:
+      answer_marker = "</think>"
 
     if not answer_marker:
       thinking_text = ""
