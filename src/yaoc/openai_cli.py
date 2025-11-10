@@ -157,8 +157,11 @@ def call_llm(base_url, api_key, model, messages, cache_prompt, tool_manager):
 
 def main():
   args = parser.parse_args()
-  model_name = get_model_name(args.base_url, args.api_key, args.model)
-  if not args.model:
+  if args.model:
+    model_name = args.model
+  else:
+    model_name = get_model_name(args.base_url, args.api_key, args.model)
+  if sys.stdin.isatty() and not args.model:
     print(f"Using model: {model_name}", file=sys.stderr)
 
   tool_manager = ToolManager({
@@ -218,6 +221,9 @@ def main():
           for tool_call in assistant_message["tool_calls"]:
             tool_name = tool_call["function"]["name"]
             tool_args = json.loads(tool_call["function"]["arguments"])
+            # weird cases where the LLM returns a string
+            if type(tool_args) is str:
+              tool_args = json.loads(tool_args)
             tool_result = tool_manager.call(tool_name, **tool_args)
             messages.append({
                 "tool_call_id": tool_call["id"],

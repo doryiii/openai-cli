@@ -17,7 +17,7 @@ want to spin up openwebui")*
   pages, performing web searches, and file reading/writing.
 - **Syntax Highlighting:** Renders Markdown in the terminal for better
   readability.
-- **Extremely simple:** Single file, no installation needed.
+- **Extremely simple:** No installation needed.
 
 ## Installation
 
